@@ -1,6 +1,9 @@
 #!/bin/bash
 
+
 param=$1;
+
+
 
 function logTwo {
     local x=0
