@@ -134,9 +134,12 @@ void outputResults(int numOfProcessors, int trueSize,MPI_Status mpiStat){
 		MPI_Recv(&results[2*i], 1, MPI_CHAR, i, TAG, MPI_COMM_WORLD, &mpiStat);
 		MPI_Recv(&results[2*i+1], 1, MPI_CHAR, i, TAG, MPI_COMM_WORLD, &mpiStat);
 	}
-	for(int i = 0; i<trueSize; i++) 
-		cout << results[i] << " " ;
-		
+	for(int i = 0; i<trueSize; i++) {
+		cout << results[i];
+		if(i+1 != trueSize){	//if not last output, print comma
+			cout << ",";
+		}
+	}
 	cout << endl;
 }
 
