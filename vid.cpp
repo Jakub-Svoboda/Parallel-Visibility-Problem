@@ -205,21 +205,21 @@ int main(int argc, char* argv[]){
 
 	if (processID == 0) leftAngle = NEUTRAL;		//fix div 0
 
-	double leftMaxAngle = leftAngle;
+	double leftMaxAngle = leftAngle;				//initial max angles = actual angles
 	double rightMaxAngle = rightAngle;
 
 	double received = rightMaxAngle;
 
 
 	// ------- UPSWEEP -------
-	rightMaxAngle = op(leftMaxAngle, received);								
+	rightMaxAngle = op(leftMaxAngle, received);				//before first iteration, max each pair						
 	for (int layer=0; layer < log2(numOfProcessors*2); layer++){
-		int computingIds = pow(2,layer);		//1,2,4,8...
-		int recIds = pow(2,layer+1);
-		if ((processID+1) % computingIds == 0){		//if I am the layer that is working now:
-			if((processID+1) % recIds == 0){			//I am receiving
+		int computingIds = pow(2,layer);					//1,2,4,8...
+		int recIds = pow(2,layer+1);						//2,4,8,16..
+		if ((processID+1) % computingIds == 0){				//if I am the layer that is working now:
+			if((processID+1) % recIds == 0){					//I am receiving
 				MPI_Recv(&received, 1, MPI_DOUBLE, processID-((int)pow(2,layer)), TAG, MPI_COMM_WORLD, &mpiStat);
-				rightMaxAngle = op(received, rightMaxAngle);
+				rightMaxAngle = op(received, rightMaxAngle);	
 			}else if (processID+1 < n/2){
 				MPI_Send(&rightMaxAngle, 1, MPI_DOUBLE, processID+((int)pow(2,layer)), TAG, MPI_COMM_WORLD);		//send to parent
 			}
@@ -228,29 +228,29 @@ int main(int argc, char* argv[]){
 
 
 	// ------- CLEAR -------
-	if(processID+1 == n/2){		//If I am the last process:
-		rightMaxAngle = NEUTRAL;
+	if(processID+1 == n/2){						//If I am the last process:
+		rightMaxAngle = NEUTRAL;				//Set last element to neutral element
 	}
 
 
 	// ------- DOWNSWEEP -------
 	for (int layer=log2(numOfProcessors); layer > 0; layer--){
 		int computingIds = pow(2,layer);		//....8,4,2,1
-		int sendIds = pow(2,layer-1);
+		int sendIds = pow(2,layer-1);			//....4,2,1
 		if ((processID+1) % sendIds == 0 && ((processID+1) % computingIds != 0)){		//If I am the left child process below current level		
-			MPI_Send(&rightMaxAngle, 1, MPI_DOUBLE, processID+sendIds, TAG, MPI_COMM_WORLD);
-			MPI_Recv(&rightMaxAngle, 1, MPI_DOUBLE, processID+sendIds, TAG, MPI_COMM_WORLD, &mpiStat);	
+			MPI_Send(&rightMaxAngle, 1, MPI_DOUBLE, processID+sendIds, TAG, MPI_COMM_WORLD);	//send right to parent
+			MPI_Recv(&rightMaxAngle, 1, MPI_DOUBLE, processID+sendIds, TAG, MPI_COMM_WORLD, &mpiStat);	//receive right from parent
 		}
-		if ((processID+1) % computingIds == 0){		//if I am the layer that is working now (receiving first round):
+		if ((processID+1) % computingIds == 0){		//if I am the layer that is working now (parent):
 			double received;
-			MPI_Recv(&received, 1, MPI_DOUBLE, processID-sendIds, TAG, MPI_COMM_WORLD, &mpiStat);
-			MPI_Send(&rightMaxAngle, 1, MPI_DOUBLE, processID-sendIds, TAG, MPI_COMM_WORLD);		//send back left
-			rightMaxAngle = op(received, rightMaxAngle);
+			MPI_Recv(&received, 1, MPI_DOUBLE, processID-sendIds, TAG, MPI_COMM_WORLD, &mpiStat);	// t = receive from child
+			MPI_Send(&rightMaxAngle, 1, MPI_DOUBLE, processID-sendIds, TAG, MPI_COMM_WORLD);		//send right to child
+			rightMaxAngle = op(received, rightMaxAngle);											//right = max t,right
 		}
 	}
-	double tmp = leftMaxAngle;
-	leftMaxAngle = rightMaxAngle;
-	rightMaxAngle = op(leftMaxAngle, tmp);
+	double tmp = leftMaxAngle;						//after iteration are done, save left
+	leftMaxAngle = rightMaxAngle;					//move right to left
+	rightMaxAngle = op(leftMaxAngle, tmp);			//right = max left,right
 
 	
 	// ------- OUTPUT -------
