@@ -20,25 +20,28 @@ using namespace std;
 
 #define TAG 0
 #define NEUTRAL -1.57079633
-//#define NEUTRAL 0 //TODOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOooooooOooooooooooooooooooooooooooooooooooooooo
+
 
 // ----------------------------- HEADERS -------------------------------
-int32_t receiveNumber(int32_t processID, MPI_Status mpiStat);
 std::vector<int> parseHeights(char* param);
+int getTrueSize(char* param);
+std::vector<int> parseHeights(char* param, int numOfProcessors);
+double op(double a, double b);
+char getLeftAnswer(int32_t processID, double leftAngle, double leftMaxAngle);
+char getRightAnswer(int32_t processID, double rightAngle, double rightMaxAngle);
+void outputResults(int numOfProcessors, int trueSize,MPI_Status mpiStat);
 
 
 // ----------------------------- CODE ----------------------------------
-
-int32_t receiveNumber(int32_t processID, MPI_Status mpiStat){
-	int32_t number;		
-	MPI_Recv(&number, 1, MPI_INT, 0, TAG, MPI_COMM_WORLD, &mpiStat); 
-	return number;
-}
-
+/**
+ * @brief Get the True Size of the input - the number of heights to work with
+ * 
+ * @param param command line input
+ * @return int Number of heights passed in parameter.
+ */
 int getTrueSize(char* param){
 	std::vector<int> vect;
     std::stringstream ss(param);
-
 	for (int i; ss >> i;) {
 		vect.push_back(i);    
 		if (ss.peek() == ',')
@@ -47,6 +50,13 @@ int getTrueSize(char* param){
 	return vect.size();
 }
 
+/**
+ * @brief Parses the command line parameter into a vector of integers representing heights
+ * 
+ * @param param Command line parameter
+ * @param numOfProcessors Number of processes alocated
+ * @return std::vector<int> Vector of heights
+ */
 std::vector<int> parseHeights(char* param, int numOfProcessors){
 	std::vector<int> vect;
     std::stringstream ss(param);
@@ -64,11 +74,25 @@ std::vector<int> parseHeights(char* param, int numOfProcessors){
 	return vect;
 }
 
+/**
+ * @brief Operation for prescan. In this case - MAX
+ * 
+ * @param a Left operand
+ * @param b Right Operand
+ * @return double result
+ */
 double op(double a, double b){
 	return max(a,b);
 }
 
-
+/**
+ * @brief Convert the left angle and max angle to visibility.
+ * 
+ * @param processID ID of calling process
+ * @param leftAngle 
+ * @param leftMaxAngle 
+ * @return char _, v, u
+ */
 char getLeftAnswer(int32_t processID, double leftAngle, double leftMaxAngle){
 	if (processID == 0){
 		return '_';
@@ -79,6 +103,14 @@ char getLeftAnswer(int32_t processID, double leftAngle, double leftMaxAngle){
 	}
 }
 
+/**
+ * @brief Convert the right angle and max angle to visibility.
+ * 
+ * @param processID ID of calling process
+ * @param rightAngle 
+ * @param rightMaxAngle 
+ * @return char _, v, u
+ */
 char getRightAnswer(int32_t processID, double rightAngle, double rightMaxAngle){
 	if (rightAngle > rightMaxAngle){
 		return 'v';
@@ -86,6 +118,28 @@ char getRightAnswer(int32_t processID, double rightAngle, double rightMaxAngle){
 		return 'u';
 	}
 }
+
+/**
+ * @brief Process zero prints the vector in the correct format and order.
+ * 
+ * @param numOfProcessors Number of processes
+ * @param trueSize True size of the passed input
+ * @param mpiStat 
+ */
+void outputResults(int numOfProcessors, int trueSize,MPI_Status mpiStat){
+	std::vector<char> results;
+	for(int i=0; i<numOfProcessors;i++){
+		results.push_back(0);
+		results.push_back(0);
+		MPI_Recv(&results[2*i], 1, MPI_CHAR, i, TAG, MPI_COMM_WORLD, &mpiStat);
+		MPI_Recv(&results[2*i+1], 1, MPI_CHAR, i, TAG, MPI_COMM_WORLD, &mpiStat);
+	}
+	for(int i = 0; i<trueSize; i++) 
+		cout << results[i] << " " ;
+		
+	cout << endl;
+}
+
 
 int main(int argc, char* argv[]){
 	int32_t numOfProcessors = 0;							//zero processors by default
@@ -144,8 +198,6 @@ int main(int argc, char* argv[]){
 	MPI_Recv(&observerHeight, 1, MPI_INT, 0, TAG, MPI_COMM_WORLD, &mpiStat);
 
 
-
-	
 	//Calculate angle
 	double leftAngle, rightAngle;
 	leftAngle = atan((leftHeight - observerHeight) / (double)(processID*2));
@@ -156,55 +208,43 @@ int main(int argc, char* argv[]){
 	double leftMaxAngle = leftAngle;
 	double rightMaxAngle = rightAngle;
 
-
-
 	double received = rightMaxAngle;
 
-	// UPSWEEP:
+
+	// ------- UPSWEEP -------
 	rightMaxAngle = op(leftMaxAngle, received);								
 	for (int layer=0; layer < log2(numOfProcessors*2); layer++){
 		int computingIds = pow(2,layer);		//1,2,4,8...
 		int recIds = pow(2,layer+1);
 		if ((processID+1) % computingIds == 0){		//if I am the layer that is working now:
-			
 			if((processID+1) % recIds == 0){			//I am receiving
-				//cout << processID << " I have: " << leftMaxAngle << " and " << rightMaxAngle << endl;
 				MPI_Recv(&received, 1, MPI_DOUBLE, processID-((int)pow(2,layer)), TAG, MPI_COMM_WORLD, &mpiStat);
-				//cout << processID << " in layer "<< layer <<  " Receiving from " << processID-((int)pow(2,layer)) << " " << received << endl;
 				rightMaxAngle = op(received, rightMaxAngle);
-
 			}else if (processID+1 < n/2){
-				//cout << processID << " in layer "<< layer <<  " SENDING TO " << processID+((int)pow(2,layer)) << " " << rightMaxAngle << endl;
 				MPI_Send(&rightMaxAngle, 1, MPI_DOUBLE, processID+((int)pow(2,layer)), TAG, MPI_COMM_WORLD);		//send to parent
 			}
 		}
 	}
 
 
-
-	// CLEAR:
+	// ------- CLEAR -------
 	if(processID+1 == n/2){		//If I am the last process:
-		rightMaxAngle = NEUTRAL;//TODDDDDDDDDDDDDDDDDDDDDOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO
+		rightMaxAngle = NEUTRAL;
 	}
 
 
-
-	// DOWNSWEEP:
+	// ------- DOWNSWEEP -------
 	for (int layer=log2(numOfProcessors); layer > 0; layer--){
 		int computingIds = pow(2,layer);		//....8,4,2,1
 		int sendIds = pow(2,layer-1);
 		if ((processID+1) % sendIds == 0 && ((processID+1) % computingIds != 0)){		//If I am the left child process below current level		
 			MPI_Send(&rightMaxAngle, 1, MPI_DOUBLE, processID+sendIds, TAG, MPI_COMM_WORLD);
-			//cout << processID << " (child) in layer "<< layer <<  " SENDING TO " << processID+sendIds << " " << rightMaxAngle << endl;
 			MPI_Recv(&rightMaxAngle, 1, MPI_DOUBLE, processID+sendIds, TAG, MPI_COMM_WORLD, &mpiStat);	
-			//cout << processID << " (child) in layer "<< layer <<  " Receiving from " << processID+sendIds << " " << rightMaxAngle << endl;
 		}
 		if ((processID+1) % computingIds == 0){		//if I am the layer that is working now (receiving first round):
 			double received;
 			MPI_Recv(&received, 1, MPI_DOUBLE, processID-sendIds, TAG, MPI_COMM_WORLD, &mpiStat);
-			//cout << processID << " (parent) in layer "<< layer <<  " Receiving from " << processID-sendIds << " " << received << endl;
 			MPI_Send(&rightMaxAngle, 1, MPI_DOUBLE, processID-sendIds, TAG, MPI_COMM_WORLD);		//send back left
-			//cout << processID << " (parent) in layer "<< layer <<  " SENDING TO " << processID-sendIds << " " << rightMaxAngle << endl;
 			rightMaxAngle = op(received, rightMaxAngle);
 		}
 	}
@@ -213,30 +253,17 @@ int main(int argc, char* argv[]){
 	rightMaxAngle = op(leftMaxAngle, tmp);
 
 	
-
+	// ------- OUTPUT -------
 	char leftAnswer = getLeftAnswer(processID, leftAngle, leftMaxAngle);
 	char rightAnswer = getRightAnswer(processID, rightAngle, rightMaxAngle);
 
-
+	// every process sends the visibility char to process 0
 	MPI_Send(&leftAnswer, 1, MPI_CHAR, 0, TAG, MPI_COMM_WORLD);
 	MPI_Send(&rightAnswer, 1, MPI_CHAR, 0, TAG, MPI_COMM_WORLD);
 
-
-	std::vector<char> results;
-	if(processID == 0){
-		for(int i=0; i<numOfProcessors;i++){
-			results.push_back(0);
-			results.push_back(0);
-			MPI_Recv(&results[2*i], 1, MPI_CHAR, i, TAG, MPI_COMM_WORLD, &mpiStat);
-			MPI_Recv(&results[2*i+1], 1, MPI_CHAR, i, TAG, MPI_COMM_WORLD, &mpiStat);
-		}
-		for(int i = 0; i<trueSize; i++) 
-			cout << results[i] << " " ;
-			
-		cout << endl;
+	if(processID == 0){		//Processor 0 will receive results and print them
+		outputResults(numOfProcessors, trueSize, mpiStat);	
 	}
-
-
 
 	MPI_Finalize(); 
 	return 0;
