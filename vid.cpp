@@ -19,8 +19,8 @@
 using namespace std;
 
 #define TAG 0
-//#define NEUTRAL -1.57079633
-#define NEUTRAL 0 //TODOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOooooooOooooooooooooooooooooooooooooooooooooooo
+#define NEUTRAL -1.57079633
+//#define NEUTRAL 0 //TODOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOooooooOooooooooooooooooooooooooooooooooooooooo
 
 // ----------------------------- HEADERS -------------------------------
 int32_t receiveNumber(int32_t processID, MPI_Status mpiStat);
@@ -65,9 +65,27 @@ std::vector<int> parseHeights(char* param, int numOfProcessors){
 }
 
 double op(double a, double b){
-	return a+b;
+	return max(a,b);
 }
 
+
+char getLeftAnswer(int32_t processID, double leftAngle, double leftMaxAngle){
+	if (processID == 0){
+		return '_';
+	}else if (leftAngle > leftMaxAngle){
+		return 'v';
+	}else{
+		return 'u';
+	}
+}
+
+char getRightAnswer(int32_t processID, double rightAngle, double rightMaxAngle){
+	if (rightAngle > rightMaxAngle){
+		return 'v';
+	}else{
+		return 'u';
+	}
+}
 
 int main(int argc, char* argv[]){
 	int32_t numOfProcessors = 0;							//zero processors by default
@@ -139,29 +157,6 @@ int main(int argc, char* argv[]){
 	double rightMaxAngle = rightAngle;
 
 
-	switch(processID){
-		case 0:
-			leftMaxAngle = 3;
-			rightMaxAngle = 1;
-			break;
-		case 1:
-			leftMaxAngle = 7;
-			rightMaxAngle = 0;
-			break;
-		case 2:
-			leftMaxAngle = 4;
-			rightMaxAngle = 1;
-			break;
-		case 3:
-			leftMaxAngle = 6;
-			rightMaxAngle = 3;
-			break;
-		default:
-			leftMaxAngle = 1;
-			rightMaxAngle = 1;	
-	}
-
-
 
 	double received = rightMaxAngle;
 
@@ -219,19 +214,21 @@ int main(int argc, char* argv[]){
 
 	
 
-	//cout << processID << "  " <<  leftMaxAngle << " " << rightMaxAngle << endl;
-	
-	MPI_Send(&leftMaxAngle, 1, MPI_DOUBLE, 0, TAG, MPI_COMM_WORLD);
-	MPI_Send(&rightMaxAngle, 1, MPI_DOUBLE, 0, TAG, MPI_COMM_WORLD);
+	char leftAnswer = getLeftAnswer(processID, leftAngle, leftMaxAngle);
+	char rightAnswer = getRightAnswer(processID, rightAngle, rightMaxAngle);
 
 
-	std::vector<double> results;
+	MPI_Send(&leftAnswer, 1, MPI_CHAR, 0, TAG, MPI_COMM_WORLD);
+	MPI_Send(&rightAnswer, 1, MPI_CHAR, 0, TAG, MPI_COMM_WORLD);
+
+
+	std::vector<char> results;
 	if(processID == 0){
 		for(int i=0; i<numOfProcessors;i++){
 			results.push_back(0);
 			results.push_back(0);
-			MPI_Recv(&results[2*i], 1, MPI_DOUBLE, i, TAG, MPI_COMM_WORLD, &mpiStat);
-			MPI_Recv(&results[2*i+1], 1, MPI_DOUBLE, i, TAG, MPI_COMM_WORLD, &mpiStat);
+			MPI_Recv(&results[2*i], 1, MPI_CHAR, i, TAG, MPI_COMM_WORLD, &mpiStat);
+			MPI_Recv(&results[2*i+1], 1, MPI_CHAR, i, TAG, MPI_COMM_WORLD, &mpiStat);
 		}
 		for(int i = 0; i<trueSize; i++) 
 			cout << results[i] << " " ;
