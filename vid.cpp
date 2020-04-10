@@ -61,7 +61,7 @@ std::vector<int> parseHeights(char* param, int numOfProcessors){
 	std::vector<int> vect;
     std::stringstream ss(param);
 
-	for (int i; ss >> i;) {
+	for (int64_t i; ss >> i;) {
 		vect.push_back(i);    
 		if (ss.peek() == ',')
 			ss.ignore();
@@ -69,7 +69,6 @@ std::vector<int> parseHeights(char* param, int numOfProcessors){
 	
 	if(vect.size() < numOfProcessors*2){
 		vect.resize(numOfProcessors*2);
-		//cout << vect.size() << "  " << numOfProcessors << endl;
 	}
 	return vect;
 }
@@ -173,6 +172,14 @@ int main(int argc, char* argv[]){
 	MPI_Bcast(&trueSize, 1, MPI_INT, 0, MPI_COMM_WORLD);
 	//Broadcast n (padded)
 	MPI_Bcast(&n, 1, MPI_INT, 0, MPI_COMM_WORLD);
+	
+	if(trueSize == 1){
+		if(processID == 0){
+			cout << "_" << endl;
+		}
+		MPI_Finalize(); 
+		exit(0);
+	}
 
 	//Send left heights
 	if (processID == 0) {	
